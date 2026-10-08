@@ -1,0 +1,65 @@
+name: Azure Terraform
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment"
+        required: true
+        type: choice
+        options:
+          - nonprod
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'nonprod' }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: environments/${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'nonprod' }}
+        run: terraform init
+
+      - name: Terraform Format
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: environments/${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'nonprod' }}
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: environments/${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'nonprod' }}
+        run: terraform plan
+
+      - name: Terraform Apply
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        working-directory: environments/${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'nonprod' }}
+        run: terraform apply -auto-approve
